@@ -1,0 +1,82 @@
+{
+  "entities": {
+    "MonthlyRecord": {
+      "title": "MonthlyRecord",
+      "description": "Rekap input indikator mutu bulanan rumah sakit",
+      "type": "object",
+      "properties": {
+        "month": {
+          "type": "number",
+          "description": "Bulan pelaporan 1-12"
+        },
+        "year": {
+          "type": "number",
+          "description": "Tahun pelaporan"
+        },
+        "data": {
+          "type": "object",
+          "description": "Data nilai indikator mutu per unit"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Catatan tambahan periode pelaporan"
+        },
+        "lastUpdated": {
+          "type": "string",
+          "description": "Timestamp ISO waktu perubahan"
+        }
+      },
+      "required": ["month", "year", "data"]
+    },
+    "HospitalConfig": {
+      "title": "HospitalConfig",
+      "description": "Identitas rumah sakit dan pejabat penandatangan laporan",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Nama resmi rumah sakit"
+        },
+        "subTitle": {
+          "type": "string",
+          "description": "Sub judul / unit penanggung jawab"
+        },
+        "address": {
+          "type": "string",
+          "description": "Alamat rumah sakit"
+        },
+        "city": {
+          "type": "string",
+          "description": "Kota rumah sakit"
+        },
+        "leadQualityName": {
+          "type": "string",
+          "description": "Nama Ketua Komite Mutu"
+        },
+        "leadQualityNip": {
+          "type": "string",
+          "description": "NIP Ketua Komite Mutu"
+        },
+        "directorName": {
+          "type": "string",
+          "description": "Nama Direktur RS"
+        },
+        "directorNip": {
+          "type": "string",
+          "description": "NIP Direktur RS"
+        }
+      },
+      "required": ["name", "subTitle"]
+    }
+  },
+  "firestore": {
+    "/inm_records/{recordId}": {
+      "schema": "MonthlyRecord",
+      "description": "Koleksi data indikator mutu bulanan yang tersinkronisasi antar-perangkat"
+    },
+    "/hospital_config/{configId}": {
+      "schema": "HospitalConfig",
+      "description": "Konfigurasi identitas rumah sakit dan komite mutu"
+    }
+  }
+}

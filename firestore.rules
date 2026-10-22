@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 100 && id.matches('^[a-zA-Z0-9_-]+$');
+    }
+
+    function isValidMonthlyRecord(data) {
+      return data.keys().hasAll(['month', 'year', 'data']) &&
+             data.month is number && data.month >= 1 && data.month <= 12 &&
+             data.year is number && data.year >= 2000 && data.year <= 2100;
+    }
+
+    function isValidHospitalConfig(data) {
+      return data.keys().hasAll(['name', 'subTitle']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.subTitle is string && data.subTitle.size() <= 200;
+    }
+
+    // Monthly Records collection for INM data
+    match /inm_records/{recordId} {
+      allow get: if isValidId(recordId);
+      allow list: if true;
+      allow create, update: if isValidId(recordId) && isValidMonthlyRecord(request.resource.data);
+      allow delete: if isValidId(recordId);
+    }
+
+    // Hospital configuration
+    match /hospital_config/{configId} {
+      allow get: if isValidId(configId);
+      allow list: if true;
+      allow create, update: if isValidId(configId) && isValidHospitalConfig(request.resource.data);
+      allow delete: if false;
+    }
+
+    // Default deny all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

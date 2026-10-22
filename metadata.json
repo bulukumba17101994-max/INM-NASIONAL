@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Sistem Informasi Indikator Mutu Nasional (INM)",
+  "description": "Aplikasi penginputan data indikator mutu rumah sakit dan rekap laporan bulanan Indikator Nasional Mutu (INM) sesuai standar Kemenkes RI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
