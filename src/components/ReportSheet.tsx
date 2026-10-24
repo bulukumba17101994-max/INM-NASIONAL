@@ -25,7 +25,7 @@ import {
   Filter
 } from 'lucide-react';
 import { INDICATORS, MONTH_NAMES, UNITS } from '../data/inmConfig';
-import { HospitalConfig, MonthlyRecord, ThresholdAlert } from '../types/inm';
+import { HospitalConfig, IndicatorDefinition, MonthlyRecord, ThresholdAlert } from '../types/inm';
 import {
   computeComprehensiveSummaries,
   computeMonthlySummaries,
@@ -41,6 +41,7 @@ interface ReportSheetProps {
   record: MonthlyRecord;
   hospital: HospitalConfig;
   yearRecords?: Record<number, MonthlyRecord>;
+  indicators?: IndicatorDefinition[];
   onExportExcel: () => void;
   onExportCSV: () => void;
   onPrint: (chartModel?: 'bar' | 'line', periodScope?: 'tw1' | 'tw2' | 'tw3' | 'tw4' | 's1' | 's2' | 'annual' | 'monthly' | 'all') => void;
@@ -51,12 +52,13 @@ export const ReportSheet: React.FC<ReportSheetProps> = ({
   record,
   hospital,
   yearRecords,
+  indicators = INDICATORS,
   onExportExcel,
   onExportCSV,
   onPrint,
   onNavigateToInput,
 }) => {
-  const [activeChartModel, setActiveChartModel] = useState<'bar' | 'line'>('bar');
+  const [activeChartModel, setActiveChartModel] = useState<'bar' | 'line'>('line');
   const [viewTableMode, setViewTableMode] = useState<'periods' | 'monthlyMatrix' | 'ndDetails'>('periods');
   const [selectedPeriod, setSelectedPeriod] = useState<
     'tw1' | 'tw2' | 'tw3' | 'tw4' | 's1' | 's2' | 'annual' | 'monthly' | 'all'
@@ -70,14 +72,14 @@ export const ReportSheet: React.FC<ReportSheetProps> = ({
   const currentSemester = record.month <= 6 ? 's1' : 's2';
 
   // Monthly computations for the currently selected month
-  const summaries = useMemo(() => computeMonthlySummaries(record), [record]);
+  const summaries = useMemo(() => computeMonthlySummaries(record, indicators), [record, indicators]);
   const stats = useMemo(() => computeOverallStats(summaries), [summaries]);
   const alerts: ThresholdAlert[] = useMemo(() => getThresholdAlerts(summaries), [summaries]);
 
   // Comprehensive computations across Monthly, Triwulan (TW1-4), Semester (S1-2), and Tahunan (Annual)
   const comprehensive = useMemo(() => {
-    return computeComprehensiveSummaries(record.year, yearRecords || { [record.month]: record });
-  }, [record.year, record.month, record, yearRecords]);
+    return computeComprehensiveSummaries(record.year, yearRecords || { [record.month]: record }, indicators);
+  }, [record.year, record.month, record, yearRecords, indicators]);
 
   // Period config helper
   const getPeriodConfig = (period: typeof selectedPeriod) => {
@@ -490,10 +492,12 @@ export const ReportSheet: React.FC<ReportSheetProps> = ({
         </div>
       </div>
 
-      {/* VISUALISASI DATA: GRAFIK CAPAIAN RATA-RATA (BULANAN, TRIWULAN, SEMESTER, TAHUNAN) */}
+      {/* VISUALISASI DATA: 13 GRAFIK PER INDIKATOR KE BAWAH (BULAN DI BAWAH, NILAI DI SAMPING) */}
       <ReportChart
         summaries={summaries}
         comprehensiveSummary={comprehensive}
+        indicators={indicators}
+        selectedMonth={record.month}
         monthName={monthName}
         year={record.year}
         chartType={activeChartModel}

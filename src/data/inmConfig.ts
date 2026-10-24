@@ -1,4 +1,4 @@
-import { HospitalConfig, IndicatorDefinition, MonthlyRecord, UnitInfo } from '../types/inm';
+import { HospitalConfig, IndicatorDefinition, MonthlyRecord, UnitInfo, UserAccount } from '../types/inm';
 
 export const UNITS: UnitInfo[] = [
   { code: 'IRNA', name: 'Rawat Inap', fullName: 'Instalasi Rawat Inap (IRNA)', description: 'Pelayanan perawatan pasien rawat inap' },
@@ -11,6 +11,63 @@ export const UNITS: UnitInfo[] = [
   { code: 'OK', name: 'Kamar Operasi', fullName: 'Instalasi Bedah Sentral (OK)', description: 'Tindakan operasi bedah elektif dan cito/emergency' },
   { code: 'FARM', name: 'Farmasi', fullName: 'Instalasi Farmasi RS', description: 'Pengelolaan obat, formularium, dan dispensing resep' },
 ];
+
+/**
+ * Akun Login untuk Admin (semua ruangan) dan masing-masing 9 Ruangan/Unit.
+ * Username dan password disesuaikan langsung dengan nama ruangan (mendukung nama ruangan maupun kode unit).
+ */
+export const USER_ACCOUNTS: UserAccount[] = [
+  {
+    id: 'ADMIN',
+    role: 'ADMIN',
+    unitCode: null,
+    roomName: 'Admin',
+    fullName: 'Administrator Komite Mutu (Semua Ruangan)',
+    username: 'admin',
+    password: 'admin',
+    aliases: ['admin', 'administrator'],
+  },
+  ...UNITS.map((unit): UserAccount => {
+    const lowerName = unit.name.trim().toLowerCase();
+    const compactName = lowerName.replace(/\s+/g, '');
+    const lowerCode = unit.code.trim().toLowerCase();
+    const aliasSet = Array.from(new Set([lowerName, compactName, lowerCode]));
+
+    return {
+      id: unit.code,
+      role: unit.code,
+      unitCode: unit.code,
+      roomName: unit.name,
+      fullName: unit.fullName,
+      username: lowerName,
+      password: lowerName,
+      aliases: aliasSet,
+    };
+  }),
+];
+
+/**
+ * Memvalidasi login berdasarkan username & password sesuai nama ruangan (atau kode ruangan) maupun admin.
+ */
+export function authenticateUser(usernameInput: string, passwordInput: string): UserAccount | null {
+  const normUser = usernameInput.trim().toLowerCase().replace(/\s+/g, ' ');
+  const normPass = passwordInput.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!normUser || !normPass) return null;
+
+  for (const account of USER_ACCOUNTS) {
+    const userMatched = account.aliases.includes(normUser);
+    const passMatched = account.aliases.includes(normPass);
+    if (userMatched && passMatched) {
+      return account;
+    }
+  }
+  return null;
+}
+
+export function getAccountById(id: string | null | undefined): UserAccount | null {
+  if (!id) return null;
+  return USER_ACCOUNTS.find((acc) => acc.id === id) || null;
+}
 
 export const INDICATORS: IndicatorDefinition[] = [
   {
@@ -203,18 +260,29 @@ export const DEFAULT_HOSPITAL_CONFIG: HospitalConfig = {
   directorNip: '19700315 199803 1 002'
 };
 
+export const DEFAULT_INDICATORS: IndicatorDefinition[] = INDICATORS;
+
 export const MONTH_NAMES = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+
+export const SHORT_MONTH_NAMES = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+  'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
 ];
 
 /**
  * Creates a clean, empty record for a given month and year.
  * No sample data - purely for live, permanent operational hospital data.
  */
-export function createEmptyRecord(month: number, year: number): MonthlyRecord {
+export function createEmptyRecord(
+  month: number,
+  year: number,
+  indicatorsList: IndicatorDefinition[] = INDICATORS
+): MonthlyRecord {
   const emptyData: MonthlyRecord['data'] = {};
-  INDICATORS.forEach((ind) => {
+  (indicatorsList || INDICATORS).forEach((ind) => {
     emptyData[ind.id] = {};
   });
 

@@ -15,8 +15,8 @@ import {
   LineChart as LineChartIcon,
   Filter
 } from 'lucide-react';
-import { INDICATORS, MONTH_NAMES } from '../data/inmConfig';
-import { HospitalConfig, MonthlyRecord } from '../types/inm';
+import { INDICATORS, MONTH_NAMES, SHORT_MONTH_NAMES } from '../data/inmConfig';
+import { HospitalConfig, IndicatorDefinition, MonthlyRecord } from '../types/inm';
 import {
   computeComprehensiveSummaries,
   computeMonthlySummaries,
@@ -32,6 +32,7 @@ interface PrintReportModalProps {
   record: MonthlyRecord;
   hospital: HospitalConfig;
   yearRecords?: Record<number, MonthlyRecord>;
+  indicators?: IndicatorDefinition[];
   initialChartModel?: 'bar' | 'line';
   initialPeriodScope?: PrintPeriodScope;
 }
@@ -42,7 +43,8 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
   record,
   hospital,
   yearRecords,
-  initialChartModel = 'bar',
+  indicators = INDICATORS,
+  initialChartModel = 'line',
   initialPeriodScope = 'tw1',
 }) => {
   // Period scope selection: 'tw1', 'tw2', 'tw3', 'tw4', 's1', 's2', 'annual', 'monthly', 'all'
@@ -66,10 +68,11 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
 
   if (!isOpen) return null;
 
-  const summaries = computeMonthlySummaries(record);
+  const summaries = computeMonthlySummaries(record, indicators);
   const comprehensive = computeComprehensiveSummaries(
     record.year,
-    yearRecords || { [record.month]: record }
+    yearRecords || { [record.month]: record },
+    indicators
   );
   const monthName = MONTH_NAMES[record.month - 1];
 
@@ -77,13 +80,13 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
     window.print();
   };
 
-  // Dimensions for high-resolution print charts
+  // Dimensions for high-resolution per-indicator print charts
   const svgWidth = 860;
-  const svgHeight = 270;
-  const paddingLeft = 52;
-  const paddingRight = 25;
-  const paddingTop = 28;
-  const paddingBottom = 42;
+  const svgHeight = 205;
+  const paddingLeft = 54;
+  const paddingRight = 30;
+  const paddingTop = 24;
+  const paddingBottom = 38;
   const chartWidth = svgWidth - paddingLeft - paddingRight;
   const chartHeight = svgHeight - paddingTop - paddingBottom;
   const yMax = 100;
@@ -91,11 +94,6 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
   const getY = (val: number) => {
     const clamped = Math.max(0, Math.min(yMax, val));
     return paddingTop + chartHeight - (clamped / yMax) * chartHeight;
-  };
-
-  const getIndicatorX = (idx: number, total: number = 13) => {
-    const slot = chartWidth / (total - 1 || 1);
-    return paddingLeft + idx * slot;
   };
 
   // Get metadata for current period scope
@@ -502,250 +500,245 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
           </div>
 
           {/* ========================================================================= */}
-          {/* GRAFIK SPESIFIK SESUAI PERIODE TERPILIH                                    */}
+          {/* 13 GRAFIK PER INDIKATOR KE BAWAH (SUMBU BAWAH = BULAN, SAMPING = NILAI)   */}
           {/* ========================================================================= */}
           {includeCharts && (
-            <div className="space-y-4 my-6 page-break-inside-avoid">
-              {/* MODEL GRAFIK BATANG */}
-              {(chartModel === 'bar' || chartModel === 'both') && (
-                <div className="border border-slate-300 rounded-xl p-4 bg-white">
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200">
-                    <div>
-                      <h4 className="font-black text-xs uppercase tracking-wide text-slate-900 flex items-center gap-1.5">
-                        <BarChart3 className="w-4 h-4 text-emerald-700" />
-                        <span>GRAFIK BATANG: CAPAIAN INM {currentMeta.label.toUpperCase()} VS TARGET KEMENKES</span>
-                      </h4>
-                      <p className="text-[10px] text-slate-500 font-sans">
-                        Perbandingan capaian riil 13 indikator pada {currentMeta.label} terhadap standar minimal mutu Kemenkes RI.
-                      </p>
-                    </div>
-                    <div className="text-[10px] text-slate-600 flex items-center gap-3 font-sans">
-                      <span className="flex items-center gap-1">
-                        <span className="w-2.5 h-2.5 bg-emerald-700 rounded-xs inline-block"></span>
-                        Capaian {currentMeta.shortLabel}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="w-4 h-0.5 bg-red-600 inline-block"></span>
-                        <span className="font-bold text-red-700">Target Standar (Garis Merah)</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="w-full overflow-hidden">
-                    <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-auto font-sans">
-                      {/* Grid Lines */}
-                      {[0, 20, 40, 60, 80, 100].map((lvl) => {
-                        const y = getY(lvl);
-                        return (
-                          <g key={lvl}>
-                            <line
-                              x1={paddingLeft}
-                              y1={y}
-                              x2={svgWidth - paddingRight}
-                              y2={y}
-                              stroke="#cbd5e1"
-                              strokeDasharray={lvl === 0 || lvl === 100 ? undefined : '2 2'}
-                            />
-                            <text x={paddingLeft - 6} y={y + 4} textAnchor="end" className="text-[9px] fill-slate-500 font-mono">
-                              {lvl}%
-                            </text>
-                          </g>
-                        );
-                      })}
-
-                      {/* Bars */}
-                      {INDICATORS.map((ind, idx) => {
-                        const comp = comprehensive.indicators.find((s) => s.id === ind.id);
-                        const val = comp ? currentMeta.getValue(comp) : null;
-                        const isMet = comp ? currentMeta.getIsMet(comp) : null;
-                        const targetY = getY(ind.targetValue);
-
-                        const total = INDICATORS.length;
-                        const slotWidth = chartWidth / total;
-                        const xSlot = paddingLeft + idx * slotWidth;
-                        const bWidth = Math.min(22, slotWidth - 10);
-
-                        return (
-                          <g key={ind.id}>
-                            {val !== null && (
-                              <rect
-                                x={xSlot + (slotWidth - bWidth) / 2}
-                                y={getY(val)}
-                                width={bWidth}
-                                height={Math.max(2, chartHeight - (getY(val) - paddingTop))}
-                                fill={isMet ? '#047857' : '#e11d48'}
-                                rx={2.5}
-                              />
-                            )}
-                            {/* Target Line Tick (Solid Red) */}
-                            <line
-                              x1={xSlot + 2}
-                              y1={targetY}
-                              x2={xSlot + slotWidth - 2}
-                              y2={targetY}
-                              stroke="#dc2626"
-                              strokeWidth={2.5}
-                            />
-                            {/* Value text above bar */}
-                            {val !== null && (
-                              <text
-                                x={xSlot + slotWidth / 2}
-                                y={getY(val) - 4}
-                                textAnchor="middle"
-                                className="text-[8.5px] font-mono fill-slate-700 font-bold"
-                              >
-                                {val.toFixed(0)}%
-                              </text>
-                            )}
-                            {/* Labels */}
-                            <text
-                              x={xSlot + slotWidth / 2}
-                              y={svgHeight - paddingBottom + 14}
-                              textAnchor="middle"
-                              className="text-[9px] font-mono fill-slate-800 font-bold"
-                            >
-                              INM-{ind.id < 10 ? `0${ind.id}` : ind.id}
-                            </text>
-                          </g>
-                        );
-                      })}
-                    </svg>
-                  </div>
+            <div className="my-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-300 pb-2">
+                <div>
+                  <h4 className="font-black text-xs uppercase tracking-wide text-slate-900">
+                    GRAFIK CAPAIAN BULANAN PER INDIKATOR ({indicators.length} GRAFIK): {currentMeta.label.toUpperCase()}
+                  </h4>
+                  <p className="text-[10px] text-slate-600 font-sans">
+                    Sumbu bawah menampilkan Bulan pelaporan, sumbu samping menampilkan Nilai (%), dan Garis Merah Utuh menunjukkan Target Standar.
+                  </p>
                 </div>
-              )}
+                <div className="text-[10px] text-slate-700 flex items-center gap-3 font-sans">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 bg-emerald-700 rounded-xs inline-block"></span>
+                    Memenuhi
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 bg-rose-600 rounded-xs inline-block"></span>
+                    Belum Memenuhi
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-4 h-0.5 bg-red-600 inline-block"></span>
+                    <span className="font-bold text-red-700">Target Standar</span>
+                  </span>
+                </div>
+              </div>
 
-              {/* MODEL GRAFIK GARIS TREN */}
-              {(chartModel === 'line' || chartModel === 'both') && (
-                <div className="border border-slate-300 rounded-xl p-4 bg-white">
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200">
-                    <div>
-                      <h4 className="font-black text-xs uppercase tracking-wide text-slate-900 flex items-center gap-1.5">
-                        <TrendingUp className="w-4 h-4 text-teal-700" />
-                        <span>GRAFIK GARIS TREN: CAPAIAN INM {currentMeta.label.toUpperCase()}</span>
-                      </h4>
-                      <p className="text-[10px] text-slate-500 font-sans">
-                        Pola garis pencapaian terhadap garis standar target nasional Kemenkes RI.
-                      </p>
-                    </div>
-                    <div className="text-[10px] text-slate-600 flex items-center gap-3 font-sans">
-                      <span className="flex items-center gap-1">
-                        <span className="w-3 h-0.5 bg-emerald-600 inline-block"></span>
-                        <span className="w-2 h-2 rounded-full bg-emerald-600 inline-block"></span>
-                        Capaian {currentMeta.shortLabel}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="w-4 h-0.5 bg-red-600 inline-block"></span>
-                        <span className="font-bold text-red-700">Target Standar (Garis Merah)</span>
-                      </span>
-                    </div>
-                  </div>
+              {(() => {
+                // For single-month print scope, still display 12 months Jan-Des on X-axis with active month highlighted
+                const chartMonthIndices =
+                  periodScope === 'monthly'
+                    ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+                    : currentMeta.monthIndices;
 
-                  <div className="w-full overflow-hidden">
-                    <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-auto font-sans">
-                      {[0, 20, 40, 60, 80, 100].map((lvl) => {
-                        const y = getY(lvl);
-                        return (
-                          <g key={lvl}>
-                            <line
-                              x1={paddingLeft}
-                              y1={y}
-                              x2={svgWidth - paddingRight}
-                              y2={y}
-                              stroke="#cbd5e1"
-                              strokeDasharray={lvl === 0 || lvl === 100 ? undefined : '2 2'}
-                            />
-                            <text x={paddingLeft - 6} y={y + 4} textAnchor="end" className="text-[9px] fill-slate-500 font-mono">
-                              {lvl}%
-                            </text>
-                          </g>
-                        );
-                      })}
+                return indicators.map((ind, indIdx) => {
+                  const comp = comprehensive.indicators.find((s) => s.id === ind.id);
+                  const mSum = summaries.find((s) => s.id === ind.id);
 
-                      {/* Target Standar Line - Solid Red Line as requested */}
-                      {(() => {
-                        const targetPoints = INDICATORS.map((ind, idx) => ({
-                          x: getIndicatorX(idx, INDICATORS.length),
-                          y: getY(ind.targetValue),
-                        }));
-                        const targetPathD = targetPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+                  const monthSeries = chartMonthIndices.map((mIdx) => {
+                    let val = comp?.monthlyPercents?.[mIdx] ?? null;
+                    if (val === null && mIdx === record.month - 1 && mSum?.avgPercent !== undefined) {
+                      val = mSum.avgPercent;
+                    }
+                    const met = val !== null ? isTargetMet(val, ind.targetOperator, ind.targetValue) : null;
+                    return {
+                      mIdx,
+                      label: chartMonthIndices.length <= 6 ? MONTH_NAMES[mIdx] : SHORT_MONTH_NAMES[mIdx],
+                      val,
+                      met,
+                    };
+                  });
 
-                        return (
+                  const periodVal = comp ? currentMeta.getValue(comp) : null;
+                  const periodMet = comp ? currentMeta.getIsMet(comp) : null;
+                  const targetY = getY(ind.targetValue);
+                  const slotCount = monthSeries.length;
+                  const slotWidth = chartWidth / slotCount;
+                  const getCenterX = (i: number) => paddingLeft + i * slotWidth + slotWidth / 2;
+
+                  const validLinePts = monthSeries
+                    .map((m, i) => (m.val !== null ? { x: getCenterX(i), y: getY(m.val), m } : null))
+                    .filter(Boolean) as { x: number; y: number; m: (typeof monthSeries)[number] }[];
+
+                  const linePathD = validLinePts
+                    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
+                    .join(' ');
+
+                  return (
+                    <div
+                      key={ind.id}
+                      className="border border-slate-300 rounded-xl p-3 bg-white break-inside-avoid page-break-inside-avoid"
+                    >
+                      <div className="flex items-center justify-between gap-2 pb-1.5 mb-1.5 border-b border-slate-200 font-sans">
+                        <div className="min-w-0">
+                          <span className="font-bold text-xs text-slate-900">
+                            {indIdx + 1}. [{ind.code}] {ind.title}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[10px] shrink-0 font-mono">
+                          <span className="text-red-700 font-bold">Standar: {ind.targetLabel}</span>
+                          <span className="text-slate-700 font-bold">
+                            Rata {currentMeta.shortLabel}: {periodVal !== null ? `${periodVal.toFixed(1)}%` : '-'}
+                          </span>
+                          {periodMet !== null && (
+                            <span className={periodMet ? 'text-emerald-800 font-bold' : 'text-rose-700 font-bold'}>
+                              ({periodMet ? 'TERCAPAI' : 'BELUM'})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-auto font-sans">
+                        <text
+                          x={13}
+                          y={paddingTop + chartHeight / 2}
+                          transform={`rotate(-90, 13, ${paddingTop + chartHeight / 2})`}
+                          textAnchor="middle"
+                          className="text-[8.5px] font-bold fill-slate-500"
+                        >
+                          NILAI (%)
+                        </text>
+
+                        {[0, 20, 40, 60, 80, 100].map((lvl) => {
+                          const y = getY(lvl);
+                          return (
+                            <g key={lvl}>
+                              <line
+                                x1={paddingLeft}
+                                y1={y}
+                                x2={svgWidth - paddingRight}
+                                y2={y}
+                                stroke={lvl === 0 ? '#94a3b8' : '#cbd5e1'}
+                                strokeDasharray={lvl === 0 || lvl === 100 ? undefined : '2 2'}
+                              />
+                              <text
+                                x={paddingLeft - 6}
+                                y={y + 3}
+                                textAnchor="end"
+                                className="text-[9px] fill-slate-600 font-mono"
+                              >
+                                {lvl}%
+                              </text>
+                            </g>
+                          );
+                        })}
+
+                        <line
+                          x1={paddingLeft}
+                          y1={paddingTop}
+                          x2={paddingLeft}
+                          y2={paddingTop + chartHeight}
+                          stroke="#94a3b8"
+                        />
+
+                        {/* Bars when chartModel is 'bar' or 'both' */}
+                        {(chartModel === 'bar' || chartModel === 'both') &&
+                          monthSeries.map((m, i) => {
+                            const cx = getCenterX(i);
+                            const bw = Math.min(34, Math.max(14, slotWidth * 0.48));
+                            if (m.val === null) return null;
+                            return (
+                              <g key={`bar-${m.mIdx}`}>
+                                <rect
+                                  x={cx - bw / 2}
+                                  y={getY(m.val)}
+                                  width={bw}
+                                  height={Math.max(2, paddingTop + chartHeight - getY(m.val))}
+                                  fill={m.met ? '#047857' : '#e11d48'}
+                                  opacity={chartModel === 'both' ? 0.45 : 0.92}
+                                  rx={2.5}
+                                />
+                                {chartModel === 'bar' && (
+                                  <text
+                                    x={cx}
+                                    y={Math.max(12, getY(m.val) - 5)}
+                                    textAnchor="middle"
+                                    className="text-[8.5px] font-mono fill-slate-800 font-bold"
+                                  >
+                                    {m.val.toFixed(1)}%
+                                  </text>
+                                )}
+                              </g>
+                            );
+                          })}
+
+                        {/* Solid Red Target Standar Line */}
+                        <line
+                          x1={paddingLeft}
+                          y1={targetY}
+                          x2={svgWidth - paddingRight}
+                          y2={targetY}
+                          stroke="#dc2626"
+                          strokeWidth={2.2}
+                        />
+
+                        {/* Line Trend when chartModel is 'line' or 'both' */}
+                        {(chartModel === 'line' || chartModel === 'both') && (
                           <>
-                            <path
-                              d={targetPathD}
-                              fill="none"
-                              stroke="#dc2626"
-                              strokeWidth={2.5}
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                            {targetPoints.map((p, i) => (
-                              <circle key={i} cx={p.x} cy={p.y} r={3} fill="#dc2626" />
-                            ))}
-                          </>
-                        );
-                      })()}
-
-                      {/* Trend Line for Period */}
-                      {(() => {
-                        const points = INDICATORS.map((ind, idx) => {
-                          const comp = comprehensive.indicators.find((s) => s.id === ind.id);
-                          const val = comp ? currentMeta.getValue(comp) : null;
-                          return {
-                            x: getIndicatorX(idx, INDICATORS.length),
-                            y: val !== null ? getY(val) : null,
-                            val,
-                            ind,
-                          };
-                        });
-                        const validPoints = points.filter((p) => p.y !== null) as { x: number; y: number; val: number; ind: any }[];
-                        const pathD = validPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-
-                        return (
-                          <>
-                            {validPoints.length > 1 && (
+                            {validLinePts.length > 1 && (
                               <path
-                                d={pathD}
+                                d={linePathD}
                                 fill="none"
-                                stroke="#047857"
-                                strokeWidth={2.5}
+                                stroke="#0f766e"
+                                strokeWidth={2.3}
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
                               />
                             )}
-                            {validPoints.map((p, i) => (
-                              <g key={i}>
-                                <circle cx={p.x} cy={p.y} r={4.5} fill="#047857" stroke="#ffffff" strokeWidth={1.5} />
+                            {validLinePts.map((p) => (
+                              <g key={`pt-${p.m.mIdx}`}>
+                                <circle
+                                  cx={p.x}
+                                  cy={p.y}
+                                  r={4}
+                                  fill={p.m.met ? '#047857' : '#e11d48'}
+                                  stroke="#ffffff"
+                                  strokeWidth={1.3}
+                                />
                                 <text
                                   x={p.x}
-                                  y={p.y - 7}
+                                  y={Math.max(12, p.y - 6)}
                                   textAnchor="middle"
-                                  className="text-[8.5px] font-mono fill-emerald-800 font-bold"
+                                  className="text-[8.5px] font-mono fill-slate-900 font-bold"
                                 >
-                                  {p.val.toFixed(0)}%
+                                  {p.m.val!.toFixed(1)}%
                                 </text>
                               </g>
                             ))}
                           </>
-                        );
-                      })()}
+                        )}
 
-                      {/* X Axis labels */}
-                      {INDICATORS.map((ind, idx) => (
+                        {/* Month Labels at Bottom */}
+                        {monthSeries.map((m, i) => (
+                          <text
+                            key={`xlbl-${m.mIdx}`}
+                            x={getCenterX(i)}
+                            y={paddingTop + chartHeight + 15}
+                            textAnchor="middle"
+                            className="text-[9.5px] font-sans fill-slate-800 font-bold"
+                          >
+                            {m.label}
+                          </text>
+                        ))}
+
                         <text
-                          key={ind.id}
-                          x={getIndicatorX(idx, INDICATORS.length)}
-                          y={svgHeight - paddingBottom + 16}
+                          x={paddingLeft + chartWidth / 2}
+                          y={svgHeight - 4}
                           textAnchor="middle"
-                          className="text-[9px] font-mono fill-slate-800 font-bold"
+                          className="text-[8px] font-bold fill-slate-400 uppercase tracking-wider"
                         >
-                          INM-{ind.id < 10 ? `0${ind.id}` : ind.id}
+                          BULAN ({record.year})
                         </text>
-                      ))}
-                    </svg>
-                  </div>
-                </div>
-              )}
+                      </svg>
+                    </div>
+                  );
+                });
+              })()}
             </div>
           )}
 

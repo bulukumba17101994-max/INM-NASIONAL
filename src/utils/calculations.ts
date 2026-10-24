@@ -158,8 +158,11 @@ export function computeIndicatorSummary(
   };
 }
 
-export function computeMonthlySummaries(record: MonthlyRecord): IndicatorSummary[] {
-  return INDICATORS.map((ind) => computeIndicatorSummary(ind, record.data[ind.id]));
+export function computeMonthlySummaries(
+  record: MonthlyRecord,
+  indicatorsList: IndicatorDefinition[] = INDICATORS
+): IndicatorSummary[] {
+  return (indicatorsList || INDICATORS).map((ind) => computeIndicatorSummary(ind, record.data[ind.id]));
 }
 
 export function computeOverallStats(summaries: IndicatorSummary[]) {
@@ -195,13 +198,14 @@ export function computeOverallStats(summaries: IndicatorSummary[]) {
  */
 export function computeAnnualSummaries(
   year: number,
-  recordsByMonth: Record<number, MonthlyRecord>
+  recordsByMonth: Record<number, MonthlyRecord>,
+  indicatorsList: IndicatorDefinition[] = INDICATORS
 ): AnnualReportSummary {
   let totalMet = 0;
   let totalNotMet = 0;
   let totalWithData = 0;
 
-  const indicators: AnnualIndicatorSummary[] = INDICATORS.map((ind) => {
+  const indicators: AnnualIndicatorSummary[] = (indicatorsList || INDICATORS).map((ind) => {
     const monthlyPercents: (number | null)[] = [];
     let sumMonthlyPct = 0;
     let activeMonthsCount = 0;
@@ -350,7 +354,8 @@ export function computePeriodSummary(
  */
 export function computeComprehensiveSummaries(
   year: number,
-  recordsByMonth: Record<number, MonthlyRecord>
+  recordsByMonth: Record<number, MonthlyRecord>,
+  indicatorsList: IndicatorDefinition[] = INDICATORS
 ): ComprehensiveReportSummary {
   let totalMetAnnual = 0;
   let totalNotMetAnnual = 0;
@@ -364,7 +369,7 @@ export function computeComprehensiveSummaries(
   let totalMetS1 = 0, totalWithDataS1 = 0;
   let totalMetS2 = 0, totalWithDataS2 = 0;
 
-  const indicators: ComprehensiveIndicatorSummary[] = INDICATORS.map((ind) => {
+  const indicators: ComprehensiveIndicatorSummary[] = (indicatorsList || INDICATORS).map((ind) => {
     const monthlyPercents: (number | null)[] = [];
     let bestMonth: { month: number; percent: number } | null = null;
     let lowestMonth: { month: number; percent: number } | null = null;

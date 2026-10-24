@@ -1,5 +1,18 @@
 export type UnitCode = 'IRNA' | 'RAJAL' | 'LAB' | 'RAD' | 'GIZI' | 'IGD' | 'BDRS' | 'OK' | 'FARM';
 
+export type UserRole = 'ADMIN' | UnitCode;
+
+export interface UserAccount {
+  id: string;
+  role: UserRole;
+  unitCode: UnitCode | null; // null for ADMIN, specific UnitCode for room accounts
+  roomName: string;
+  fullName: string;
+  username: string;
+  password: string;
+  aliases: string[];
+}
+
 export interface UnitInfo {
   code: UnitCode;
   name: string;

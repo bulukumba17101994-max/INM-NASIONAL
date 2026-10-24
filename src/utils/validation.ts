@@ -119,10 +119,13 @@ export function validateCell(
 /**
  * Validates the entire monthly record and aggregates all validation issues.
  */
-export function validateMonthlyRecord(record: MonthlyRecord): ValidationError[] {
+export function validateMonthlyRecord(
+  record: MonthlyRecord,
+  indicatorsList: IndicatorDefinition[] = INDICATORS
+): ValidationError[] {
   const allErrors: ValidationError[] = [];
 
-  INDICATORS.forEach((ind) => {
+  (indicatorsList || INDICATORS).forEach((ind) => {
     const rowData = record.data[ind.id] || {};
     UNITS.forEach((u) => {
       const cell = rowData[u.code];

@@ -13,7 +13,7 @@ import {
   Unsubscribe,
 } from 'firebase/firestore';
 import firebaseConfigRaw from '../../firebase-applet-config.json';
-import { HospitalConfig, MonthlyRecord, UnitCode } from '../types/inm';
+import { HospitalConfig, IndicatorDefinition, MonthlyRecord, UnitCode } from '../types/inm';
 import { createEmptyRecord } from '../data/inmConfig';
 
 // Initialize Firebase App
@@ -26,6 +26,8 @@ export const db = getFirestore(app, databaseId);
 export const RECORD_COLLECTION = 'inm_records';
 export const HOSPITAL_COLLECTION = 'hospital_config';
 export const HOSPITAL_DOC_ID = 'main';
+export const INDICATORS_COLLECTION = 'inm_indicators';
+export const INDICATORS_DOC_ID = 'main';
 
 export enum OperationType {
   CREATE = 'create',
@@ -96,18 +98,24 @@ export function getRecordDocId(year: number, month: number): string {
  * Prevents Firestore's "Unsupported field value: undefined" fatal error.
  * Strips NaN, converts numbers cleanly, and enforces schema compliance.
  */
-export function sanitizeRecordForCloud(record: MonthlyRecord): Record<string, any> {
+export function sanitizeRecordForCloud(
+  record: MonthlyRecord,
+  onlyUnitCode?: UnitCode | null
+): Record<string, any> {
   const cleanData: Record<string, Record<string, { numerator: number | null; denominator: number | null; percent: number | null }>> = {};
 
   if (record.data && typeof record.data === 'object') {
     for (const indKey in record.data) {
       const indId = parseInt(indKey, 10);
-      if (isNaN(indId) || indId < 1 || indId > 20) continue;
+      if (isNaN(indId) || indId < 1 || indId > 10000) continue;
       const unitMap = record.data[indId];
       if (!unitMap || typeof unitMap !== 'object') continue;
 
-      cleanData[String(indId)] = {};
+      const sanitizedUnits: Record<string, { numerator: number | null; denominator: number | null; percent: number | null }> = {};
+
       for (const unitKey in unitMap) {
+        if (onlyUnitCode && unitKey !== onlyUnitCode) continue;
+
         const cell = unitMap[unitKey as UnitCode];
         if (!cell || typeof cell !== 'object') continue;
 
@@ -126,11 +134,15 @@ export function sanitizeRecordForCloud(record: MonthlyRecord): Record<string, an
             ? Math.max(0, Math.min(100, Math.round(Number(cell.percent) * 100) / 100))
             : null;
 
-        cleanData[String(indId)][unitKey] = {
+        sanitizedUnits[unitKey] = {
           numerator: num,
           denominator: den,
           percent: pct,
         };
+      }
+
+      if (Object.keys(sanitizedUnits).length > 0 || !onlyUnitCode) {
+        cleanData[String(indId)] = sanitizedUnits;
       }
     }
   }
@@ -147,6 +159,45 @@ export function sanitizeRecordForCloud(record: MonthlyRecord): Record<string, an
   }
 
   return payload;
+}
+
+/**
+ * Merges two MonthlyRecords cell-by-cell so multi-room concurrent inputs
+ * never overwrite another room's data for the same month.
+ */
+export function mergeMonthlyRecords(
+  base: MonthlyRecord,
+  incoming: MonthlyRecord,
+  preferLocalUnit?: UnitCode | null
+): MonthlyRecord {
+  if (base.month !== incoming.month || base.year !== incoming.year) {
+    return incoming;
+  }
+
+  const mergedData: MonthlyRecord['data'] = {};
+  const allIndIds = new Set<number>([
+    ...Object.keys(base.data || {}).map(Number),
+    ...Object.keys(incoming.data || {}).map(Number),
+  ]);
+
+  allIndIds.forEach((indId) => {
+    if (isNaN(indId)) return;
+    const baseRow = base.data?.[indId] || {};
+    const incRow = incoming.data?.[indId] || {};
+    mergedData[indId] = { ...baseRow, ...incRow };
+
+    if (preferLocalUnit && baseRow[preferLocalUnit]) {
+      mergedData[indId][preferLocalUnit] = baseRow[preferLocalUnit];
+    }
+  });
+
+  return {
+    month: incoming.month,
+    year: incoming.year,
+    data: mergedData,
+    notes: incoming.notes ?? base.notes,
+    lastUpdated: incoming.lastUpdated || base.lastUpdated || new Date().toISOString(),
+  };
 }
 
 /**
@@ -283,15 +334,19 @@ export function subscribeToYearRecords(
 
 /**
  * Saves or updates a monthly record in Cloud Firestore atomically.
- * Uses { merge: false } so deleted cells or reset values do not leave orphan keys.
+ * Uses { merge: true } so concurrent room accounts updating their own unit
+ * never overwrite other rooms' monthly inputs.
  */
-export async function saveRecordToCloud(record: MonthlyRecord): Promise<void> {
+export async function saveRecordToCloud(
+  record: MonthlyRecord,
+  onlyUnitCode?: UnitCode | null
+): Promise<void> {
   const docId = getRecordDocId(record.year, record.month);
   const docRef = doc(db, RECORD_COLLECTION, docId);
-  const payload = sanitizeRecordForCloud(record);
+  const payload = sanitizeRecordForCloud(record, onlyUnitCode);
 
   try {
-    await setDoc(docRef, payload, { merge: false });
+    await setDoc(docRef, payload, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${RECORD_COLLECTION}/${docId}`);
   }
@@ -388,5 +443,84 @@ export async function fetchAllCloudRecords(): Promise<Record<string, MonthlyReco
     return records;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, RECORD_COLLECTION);
+  }
+}
+
+/**
+ * Sanitizes an array of IndicatorDefinition items for Cloud Firestore storage.
+ */
+function sanitizeIndicatorItem(raw: any, index: number): IndicatorDefinition {
+  const validOps = ['>=', '>', '<=', '<', '='] as const;
+  const op = validOps.includes(raw?.targetOperator) ? raw.targetOperator : '>=';
+  const type = raw?.type === 'PERCENT_ONLY' ? 'PERCENT_ONLY' : 'N_D';
+  const id = typeof raw?.id === 'number' && !isNaN(raw.id) ? raw.id : index + 1;
+
+  const clean: IndicatorDefinition = {
+    id,
+    code: String(raw?.code || `INM-${id < 10 ? `0${id}` : id}`).trim(),
+    title: String(raw?.title || `Indikator Mutu ${id}`).trim(),
+    targetLabel: String(raw?.targetLabel || `${op} ${Number(raw?.targetValue) || 0}%`).trim(),
+    targetValue: typeof raw?.targetValue === 'number' && !isNaN(raw.targetValue) ? raw.targetValue : 80,
+    targetOperator: op,
+    type,
+    description: String(raw?.description || '').trim(),
+    standardReference: String(raw?.standardReference || 'Standar Mutu RS').trim(),
+  };
+
+  if (raw?.numeratorLabel) clean.numeratorLabel = String(raw.numeratorLabel).trim();
+  if (raw?.denominatorLabel) clean.denominatorLabel = String(raw.denominatorLabel).trim();
+  if (Array.isArray(raw?.relevantUnits) && raw.relevantUnits.length > 0) {
+    clean.relevantUnits = raw.relevantUnits as UnitCode[];
+  }
+
+  return clean;
+}
+
+/**
+ * Real-time subscription to Indicators Configuration in Cloud Firestore.
+ * Uses hospital_config/indicators to work seamlessly with live Firestore rules.
+ */
+export function subscribeToIndicators(
+  onUpdate: (indicators: IndicatorDefinition[] | null) => void,
+  onError?: (error: Error) => void
+): Unsubscribe {
+  const docRef = doc(db, HOSPITAL_COLLECTION, 'indicators');
+
+  return onSnapshot(
+    docRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (Array.isArray(data?.items) && data.items.length > 0) {
+          onUpdate(data.items.map((item: any, idx: number) => sanitizeIndicatorItem(item, idx)));
+          return;
+        }
+      }
+      onUpdate(null);
+    },
+    (err) => {
+      console.warn('Error syncing indicators config:', err);
+      if (onError) {
+        onError(err instanceof Error ? err : new Error(String(err)));
+      }
+    }
+  );
+}
+
+/**
+ * Saves Indicators Configuration in Cloud Firestore.
+ */
+export async function saveIndicatorsToCloud(indicators: IndicatorDefinition[]): Promise<void> {
+  const docRef = doc(db, HOSPITAL_COLLECTION, 'indicators');
+  const cleanItems = indicators.map((item, idx) => sanitizeIndicatorItem(item, idx));
+  try {
+    await setDoc(docRef, {
+      name: 'Konfigurasi Indikator Mutu',
+      subTitle: 'Daftar Indikator Aktif',
+      items: cleanItems,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.warn('Cloud indicators sync fallback to localStorage:', error);
   }
 }

@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import { INDICATORS, MONTH_NAMES, UNITS } from '../data/inmConfig';
-import { HospitalConfig, MonthlyRecord } from '../types/inm';
-import { computeAnnualSummaries, computeComprehensiveSummaries, computeMonthlySummaries } from './calculations';
+import { HospitalConfig, IndicatorDefinition, MonthlyRecord } from '../types/inm';
+import { computeComprehensiveSummaries, computeMonthlySummaries } from './calculations';
 
 /**
  * Exports monthly, quarterly, semester, and annual records into an Excel workbook.
@@ -12,13 +12,15 @@ import { computeAnnualSummaries, computeComprehensiveSummaries, computeMonthlySu
 export function exportToExcel(
   record: MonthlyRecord,
   hospital: HospitalConfig,
-  yearRecords?: Record<number, MonthlyRecord>
+  yearRecords?: Record<number, MonthlyRecord>,
+  indicatorsList: IndicatorDefinition[] = INDICATORS
 ) {
-  const summaries = computeMonthlySummaries(record);
+  const summaries = computeMonthlySummaries(record, indicatorsList);
   const monthName = MONTH_NAMES[record.month - 1];
   const comprehensive = computeComprehensiveSummaries(
     record.year,
-    yearRecords || { [record.month]: record }
+    yearRecords || { [record.month]: record },
+    indicatorsList
   );
 
   const wb = XLSX.utils.book_new();
@@ -229,8 +231,11 @@ export function exportToExcel(
 /**
  * Exports directly to CSV format matching the exact structure from the user's attachment.
  */
-export function exportToCSV(record: MonthlyRecord) {
-  const summaries = computeMonthlySummaries(record);
+export function exportToCSV(
+  record: MonthlyRecord,
+  indicatorsList: IndicatorDefinition[] = INDICATORS
+) {
+  const summaries = computeMonthlySummaries(record, indicatorsList);
 
   const lines: string[] = [
     ',,,,,,,,,,,,,',
@@ -292,7 +297,11 @@ export function exportToCSV(record: MonthlyRecord) {
 /**
  * Parses uploaded CSV / Excel file and merges values into target monthly record.
  */
-export async function parseImportFile(file: File, baseRecord: MonthlyRecord): Promise<MonthlyRecord> {
+export async function parseImportFile(
+  file: File,
+  baseRecord: MonthlyRecord,
+  indicatorsList: IndicatorDefinition[] = INDICATORS
+): Promise<MonthlyRecord> {
   const buffer = await file.arrayBuffer();
   const wb = XLSX.read(buffer, { type: 'array' });
   const firstSheetName = wb.SheetNames[0];
@@ -343,11 +352,12 @@ export async function parseImportFile(file: File, baseRecord: MonthlyRecord): Pr
       }
     }
 
-    if (noCell && !isNaN(Number(noCell)) && Number(noCell) >= 1 && Number(noCell) <= 13) {
+    const activeList = indicatorsList || INDICATORS;
+    if (noCell && !isNaN(Number(noCell)) && activeList.some((ind) => ind.id === Number(noCell))) {
       currentIndicatorId = Number(noCell);
     } else if (indTitleCell) {
       // Try to find indicator matching title
-      const found = INDICATORS.find(ind =>
+      const found = activeList.find(ind =>
         String(indTitleCell).toLowerCase().includes(ind.code.toLowerCase()) ||
         String(indTitleCell).toLowerCase().includes(ind.title.toLowerCase().substring(0, 10))
       );
@@ -356,6 +366,7 @@ export async function parseImportFile(file: File, baseRecord: MonthlyRecord): Pr
 
     if (!currentIndicatorId) continue;
     const indId = currentIndicatorId;
+    const targetInd = activeList.find((ind) => ind.id === indId);
     if (!updatedData[indId]) {
       updatedData[indId] = {};
     }
@@ -373,7 +384,7 @@ export async function parseImportFile(file: File, baseRecord: MonthlyRecord): Pr
         updatedData[indId][unitCode].numerator = valNum;
       } else if (typeCell === 'D') {
         updatedData[indId][unitCode].denominator = valNum;
-      } else if (typeCell === '%' && indId === 13) {
+      } else if (typeCell === '%' && (indId === 13 || targetInd?.type === 'PERCENT_ONLY')) {
         updatedData[indId][unitCode].percent = valNum;
       }
     });

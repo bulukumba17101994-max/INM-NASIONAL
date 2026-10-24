@@ -67,6 +67,22 @@
         }
       },
       "required": ["name", "subTitle"]
+    },
+    "IndicatorsConfig": {
+      "title": "IndicatorsConfig",
+      "description": "Daftar konfigurasi indikator mutu rumah sakit",
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "description": "Array definisi indikator mutu"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp ISO perubahan terakhir"
+        }
+      },
+      "required": ["items"]
     }
   },
   "firestore": {
@@ -77,6 +93,10 @@
     "/hospital_config/{configId}": {
       "schema": "HospitalConfig",
       "description": "Konfigurasi identitas rumah sakit dan komite mutu"
+    },
+    "/inm_indicators/{configId}": {
+      "schema": "IndicatorsConfig",
+      "description": "Konfigurasi daftar indikator mutu yang dapat ditambah, diedit, dan dihapus"
     }
   }
 }
